@@ -63,30 +63,40 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(CONF_NAME, default=d.get(CONF_NAME, "")): str,
-            vol.Required(CONF_NODE_DEVICE, default=d.get(CONF_NODE_DEVICE)): _NODE_SELECTOR,
-            vol.Required(CONF_ETO_ENTITY, default=d.get(CONF_ETO_ENTITY)): _ETO_SELECTOR,
-            vol.Optional(CONF_RAIN_ENTITY, default=d.get(CONF_RAIN_ENTITY)): _ETO_SELECTOR,
+            vol.Required(CONF_NODE_DEVICE): _NODE_SELECTOR,
+            vol.Required(CONF_ETO_ENTITY): _ETO_SELECTOR,
+            vol.Optional(CONF_RAIN_ENTITY): _ETO_SELECTOR,
             vol.Required(CONF_CROP, default=d.get(CONF_CROP, CROPS[0])): _CROP_SELECTOR,
         }
     )
 
 
-def _number(min_v, max_v, step, unit):
-    return selector.NumberSelector(
-        selector.NumberSelectorConfig(
-            min=min_v, max=max_v, step=step, unit_of_measurement=unit,
-            mode=selector.NumberSelectorMode.BOX,
-        )
-    )
+def _number(min_v, max_v, step, unit=None):
+    """NumberSelector en modo caja. La unidad SOLO se incluye si no es None:
+    HA valida `unit_of_measurement` como str y rechaza None (era el 'Unknown error')."""
+    cfg: dict[str, Any] = {
+        "min": min_v,
+        "max": max_v,
+        "step": step,
+        "mode": selector.NumberSelectorMode.BOX,
+    }
+    if unit is not None:
+        cfg["unit_of_measurement"] = unit
+    return selector.NumberSelector(cfg)
 
 
 def _params_schema(cur: dict[str, Any]) -> vol.Schema:
     """Parámetros ajustables (también usados por el OptionsFlow)."""
+    # Kc opcional: solo ponemos default si ya hay valor guardado (evita default=None).
+    kc = cur.get(CONF_KC_OVERRIDE)
+    kc_key = (
+        vol.Optional(CONF_KC_OVERRIDE, default=kc)
+        if kc is not None
+        else vol.Optional(CONF_KC_OVERRIDE)
+    )
     return vol.Schema(
         {
-            vol.Optional(
-                CONF_KC_OVERRIDE, default=cur.get(CONF_KC_OVERRIDE)
-            ): _number(0.0, 2.0, 0.01, None),
+            kc_key: _number(0.0, 2.0, 0.01),
             vol.Required(
                 CONF_AREA, default=cur.get(CONF_AREA, DEFAULT_AREA)
             ): _number(0.1, 200.0, 0.1, "m²"),
