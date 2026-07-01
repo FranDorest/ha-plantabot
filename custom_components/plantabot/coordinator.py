@@ -12,6 +12,7 @@ Diseño clave (según brief):
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -46,20 +47,41 @@ from .const import (
     FERT_GOOD,
     FERT_HOT,
     FERT_NO_DATA,
-    FLOW_RATE_HINTS,
-    FLOW_TOTAL_HINTS,
+    FLOW_TOTAL_MATCH,
     MAX_SOIL_TEMP,
     MAX_WATERMARK,
-    NON_SOIL_TEMP_HINTS,
     REC_IRRIGATE,
     REC_IRRIGATE_NO_SOIL,
     REC_NO_IRRIGATE,
-    SOIL_TEMP_HINTS,
-    WATERMARK_UNITS,
+    SOIL_TEMP_REGEX,
+    WATERMARK_MATCH,
 )
 from .crops import get_kc
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _classify(object_id: str, name: str) -> str | None:
+    """Clasifica una entidad del nodo por su NOMBRE (no por unidad).
+
+    Los sensores de TTN llegan como texto sin unidades, así que la única pista
+    fiable es el nombre. Devuelve 'watermark' | 'soil_temp' | 'flow_total' | None.
+
+    Ejemplos con los nombres reales del nodo:
+      wm1_kpa/wm2_kpa/wm3_kpa -> watermark
+      ds1_temp_c/ds2/ds3      -> soil_temp
+      bmp_temp_c / cpu_temp_c -> None (temperatura que NO es de suelo)
+      bmp_pres_hpa            -> None ('hpa' != 'kpa')
+      litros                  -> flow_total
+    """
+    hay = f"{object_id} {name}".lower()
+    if WATERMARK_MATCH in hay:
+        return "watermark"
+    if re.search(SOIL_TEMP_REGEX, hay):
+        return "soil_temp"
+    if any(m in hay for m in FLOW_TOTAL_MATCH):
+        return "flow_total"
+    return None
 
 
 @dataclass
@@ -100,6 +122,8 @@ class PlantaBotData:
     soil_temp_c: float | None = None
     n_watermark: int = 0
     n_soil_temp: int = 0
+    watermark_values: list[float] = field(default_factory=list)
+    soil_temp_values: list[float] = field(default_factory=list)
     irrigation_rec: str | None = None
     fertilizer_rec: str = FERT_NO_DATA
     balance_l: float | None = None
@@ -160,31 +184,25 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
         ent_reg = er.async_get(self.hass)
         entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=False)
 
+        auto_wm: list[str] = []
+        auto_st: list[str] = []
         for ent in entries:
             eid = ent.entity_id
-            low = eid.lower()
-            name_low = (ent.original_name or ent.name or "").lower()
-            state = self.hass.states.get(eid)
-            unit = (state.attributes.get("unit_of_measurement", "") if state else "").lower()
-
-            # Watermark -> unidad kPa (solo si no vino por override manual)
-            if unit in WATERMARK_UNITS and not wm_override:
-                if len(res.watermarks) < MAX_WATERMARK and eid not in res.watermarks:
-                    res.watermarks.append(eid)
-                continue
-
-            # Temperatura de suelo (DS18B20) -> °C + pista de suelo, excluyendo BMP/CPU/aire
-            is_soil_hint = any(h in low or h in name_low for h in SOIL_TEMP_HINTS)
-            is_non_soil = any(h in low or h in name_low for h in NON_SOIL_TEMP_HINTS)
-            if unit in ("°c", "c") and is_soil_hint and not is_non_soil and not st_override:
-                if len(res.soil_temps) < MAX_SOIL_TEMP and eid not in res.soil_temps:
-                    res.soil_temps.append(eid)
-                continue
-
-            # Litros acumulados (caudalímetro)
-            if res.flow_total is None and any(h in low or h in name_low for h in FLOW_TOTAL_HINTS):
+            object_id = eid.split(".", 1)[-1]
+            name = ent.original_name or ent.name or ""
+            cat = _classify(object_id, name)
+            if cat == "watermark" and not wm_override:
+                auto_wm.append(eid)
+            elif cat == "soil_temp" and not st_override:
+                auto_st.append(eid)
+            elif cat == "flow_total" and res.flow_total is None:
                 res.flow_total = eid
-                continue
+
+        # Orden estable (wm1<wm2<wm3, ds1<ds2<ds3) y recorte al máximo permitido
+        if not wm_override:
+            res.watermarks = sorted(auto_wm)[:MAX_WATERMARK]
+        if not st_override:
+            res.soil_temps = sorted(auto_st)[:MAX_SOIL_TEMP]
 
         return res
 
@@ -218,13 +236,10 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
     async def _async_update_data(self) -> PlantaBotData:
         return self._compute()
 
-    def _mean_of(self, entity_ids: list[str]) -> tuple[float | None, int]:
-        vals = [
+    def _values_of(self, entity_ids: list[str]) -> list[float]:
+        return [
             v for v in (_to_float(self.hass.states.get(e)) for e in entity_ids) if v is not None
         ]
-        if not vals:
-            return None, 0
-        return sum(vals) / len(vals), len(vals)
 
     def _compute(self) -> PlantaBotData:
         data = PlantaBotData()
@@ -253,13 +268,17 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             if eff > 0:
                 data.litros_objetivo = round(deficit_mm * area / eff, 1)
 
-        # Suelo: Watermark (kPa) y temperatura (°C), agregados por media
-        data.watermark_kpa, data.n_watermark = self._mean_of(self.resolved.watermarks)
-        if data.watermark_kpa is not None:
-            data.watermark_kpa = round(data.watermark_kpa, 1)
-        data.soil_temp_c, data.n_soil_temp = self._mean_of(self.resolved.soil_temps)
-        if data.soil_temp_c is not None:
-            data.soil_temp_c = round(data.soil_temp_c, 1)
+        # Suelo: Watermark (kPa) y temperatura (°C). Media para decidir; se guardan
+        # además los valores individuales (wm1/2/3, ds1/2/3) como diagnóstico.
+        data.watermark_values = self._values_of(self.resolved.watermarks)
+        data.n_watermark = len(data.watermark_values)
+        if data.watermark_values:
+            data.watermark_kpa = round(sum(data.watermark_values) / data.n_watermark, 1)
+
+        data.soil_temp_values = self._values_of(self.resolved.soil_temps)
+        data.n_soil_temp = len(data.soil_temp_values)
+        if data.soil_temp_values:
+            data.soil_temp_c = round(sum(data.soil_temp_values) / data.n_soil_temp, 1)
 
         # Recomendación de riego (cruce cálculo x Watermark)
         dry_th = float(self._opt(CONF_DRY_THRESHOLD, DEFAULT_DRY_THRESHOLD))

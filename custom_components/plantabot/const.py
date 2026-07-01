@@ -56,10 +56,15 @@ FERT_NO_DATA = "sin_dato"
 FERT_STATES = [FERT_GOOD, FERT_COLD, FERT_HOT, FERT_NO_DATA]
 
 # --- Patrones de auto-resolución de entidades del nodo ---
-# Se comparan (en minúsculas) contra el entity_id / nombre de las entidades del device.
-WATERMARK_UNITS = ("kpa",)
-SOIL_TEMP_HINTS = ("suelo", "soil", "18b20", "ds18", "watermark_temp")
-# Se excluyen temperaturas que NO son de suelo:
-NON_SOIL_TEMP_HINTS = ("bmp", "cpu", "aire", "air", "gps")
-FLOW_TOTAL_HINTS = ("litros", "liters", "volumen", "volume")
-FLOW_RATE_HINTS = ("caudal", "lpm", "flow")
+# IMPORTANTE: las entidades de TTN llegan como TEXTO, sin unit_of_measurement ni
+# device_class. Por eso NO se puede resolver por unidad: se resuelve por NOMBRE
+# (object_id / friendly name), comparado en minúsculas.
+#
+# Nombres reales del nodo RAK:
+#   Watermark  -> wm1_kpa, wm2_kpa, wm3_kpa
+#   DS18B20    -> ds1_temp_c, ds2_temp_c, ds3_temp_c   (NO bmp_temp_c / cpu_temp_c)
+#   Caudalím.  -> litros (acumulado)   [puede no venir en todos los uplinks]
+WATERMARK_MATCH = "kpa"                 # 'kpa' aparece en wmN_kpa y NO en bmp_pres_hpa
+SOIL_TEMP_REGEX = r"ds\d+.*temp"        # dsN_temp_c; excluye bmp_temp_c / cpu_temp_c
+FLOW_TOTAL_MATCH = ("litros", "liters", "volumen")
+FLOW_RATE_MATCH = ("caudal", "lpm")
