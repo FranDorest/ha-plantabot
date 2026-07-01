@@ -72,7 +72,7 @@ from .const import (
 )
 from .crops import get_kc
 from .health import harvest_progress, tree_health
-from .phenology import lifecycle_from_age, phenology_from_month
+from .phenology import lifecycle_from_age, effective_phenology
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -393,7 +393,9 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
 
         feno_meta = self.metadata.get(META_FENOLOGIA)
         if feno_meta == AUTO:
-            data.fenologia_efectiva = phenology_from_month(crop, datetime.now().month)
+            data.fenologia_efectiva = effective_phenology(
+                crop, datetime.now().month, data.ciclo_efectivo
+            )
         else:
             data.fenologia_efectiva = feno_meta  # type: ignore[assignment]
 

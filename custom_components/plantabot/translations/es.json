@@ -173,7 +173,8 @@
           "engorde": "Engorde (llenado)",
           "maduracion": "Maduración",
           "cosecha": "Cosecha",
-          "postcosecha": "Postcosecha"
+          "postcosecha": "Postcosecha",
+          "vegetativo": "Crecimiento vegetativo"
         }
       }
     },
@@ -226,7 +227,8 @@
           "engorde": "Engorde (llenado)",
           "maduracion": "Maduración",
           "cosecha": "Cosecha",
-          "postcosecha": "Postcosecha"
+          "postcosecha": "Postcosecha",
+          "vegetativo": "Crecimiento vegetativo"
         }
       }
     },

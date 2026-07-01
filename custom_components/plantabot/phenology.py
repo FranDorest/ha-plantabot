@@ -38,6 +38,30 @@ PHENO_NISPERO = {
 }
 PHENO_CURVES = {CROP_CEREZO: PHENO_CEREZO, CROP_NISPERO: PHENO_NISPERO}
 
+# Etapas de ciclo de vida en las que el árbol SÍ da fruto.
+PRODUCTIVE_STAGES = {"produccion", "adulto", "senescente"}
+VEGETATIVE = "vegetativo"
+
+
+def is_productive(ciclo: str | None) -> bool:
+    """True si el árbol está en una etapa productiva (da fruto)."""
+    return ciclo in PRODUCTIVE_STAGES
+
+
+def effective_phenology(crop: str, month: int, ciclo: str | None) -> str | None:
+    """Fenología efectiva teniendo en cuenta el ciclo de vida.
+
+    Un árbol joven/no productivo (plantón o formación) no fructifica: no aplican las
+    etapas de fruto (floración, cuajado, engorde, maduración, cosecha). Solo tiene
+    sentido 'reposo' en invierno y 'vegetativo' (crecimiento) el resto del año.
+    """
+    stage = phenology_from_month(crop, month)
+    if stage is None:
+        return None
+    if not is_productive(ciclo):
+        return stage if stage == "reposo" else VEGETATIVE
+    return stage
+
 
 def lifecycle_from_age(crop: str, age_years: float | None) -> str | None:
     """Etapa de ciclo de vida a partir de la edad. None si no hay edad."""

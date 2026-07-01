@@ -101,7 +101,7 @@ AUTO = "auto"
 CICLO_STAGES = ["planton", "formacion", "produccion", "adulto", "senescente"]
 FENO_STAGES = [
     "reposo", "brotacion", "floracion", "cuajado",
-    "engorde", "maduracion", "cosecha", "postcosecha",
+    "engorde", "maduracion", "cosecha", "postcosecha", "vegetativo",
 ]
 CICLO_OPTIONS = [AUTO, *CICLO_STAGES]
 FENO_OPTIONS = [AUTO, *FENO_STAGES]
@@ -125,6 +125,7 @@ META_DEFAULTS: dict[str, object] = {
 HARVEST_MAP: dict[str, int] = {
     "reposo": 0, "brotacion": 5, "floracion": 15, "cuajado": 30,
     "engorde": 55, "maduracion": 85, "cosecha": 100, "postcosecha": 0,
+    "vegetativo": 0,
 }
 
 # Persistencia y "online"
