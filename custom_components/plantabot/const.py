@@ -68,3 +68,62 @@ WATERMARK_MATCH = "kpa"                 # 'kpa' aparece en wmN_kpa y NO en bmp_p
 SOIL_TEMP_REGEX = r"ds\d+.*temp"        # dsN_temp_c; excluye bmp_temp_c / cpu_temp_c
 FLOW_TOTAL_MATCH = ("litros", "liters", "volumen")
 FLOW_RATE_MATCH = ("caudal", "lpm")
+
+# Catálogo de campos del nodo que PlantaBot refleja como entidades tipadas.
+# Se emparejan por substring del object_id (rakXXXX_<campo>). Claves = nombres del payload.
+WM_FIELDS = ("wm1_kpa", "wm2_kpa", "wm3_kpa")
+DS_FIELDS = ("ds1_temp_c", "ds2_temp_c", "ds3_temp_c")
+AMBIENT_FIELDS = ("bmp_temp_c", "bmp_pres_hpa")
+DIAG_FIELDS = (
+    "bateria_pct", "bateria_v", "bateria_mv",
+    "cpu_temp_c", "ciclo_ms", "uptime_s",
+    "latitude", "longitude",
+)
+FLOW_FIELD = ("litros",)
+# Todos los campos a resolver desde el device del nodo:
+NODE_FIELD_KEYS = (*WM_FIELDS, *DS_FIELDS, *AMBIENT_FIELDS, *DIAG_FIELDS, *FLOW_FIELD)
+
+# --- Metadatos editables del árbol (entidades number/select/date, persistidos) ---
+META_ALTURA = "altura_m"
+META_COPA = "copa_m"
+META_ANIO = "anio_plantacion"
+META_PH = "ph"
+META_CE = "ce"
+META_N = "n"
+META_P = "p"
+META_K = "k"
+META_CICLO = "ciclo_vida"
+META_FENOLOGIA = "fenologia"
+META_FECHA_CUAJADO = "fecha_cuajado"
+
+# Opciones de los desplegables
+CICLO_OPTIONS = ["planton", "formacion", "produccion", "adulto", "senescente"]
+FENO_OPTIONS = [
+    "reposo", "brotacion", "floracion", "cuajado",
+    "engorde", "maduracion", "cosecha", "postcosecha",
+]
+
+# Valores por defecto de los metadatos
+META_DEFAULTS: dict[str, object] = {
+    META_ALTURA: 1.5,
+    META_COPA: 1.0,
+    META_ANIO: 2024,
+    META_PH: 7.5,
+    META_CE: 1.0,
+    META_N: 0.0,
+    META_P: 0.0,
+    META_K: 0.0,
+    META_CICLO: "formacion",
+    META_FENOLOGIA: "reposo",
+    META_FECHA_CUAJADO: None,
+}
+
+# Progreso de cosecha (0-100) por estado fenológico
+HARVEST_MAP: dict[str, int] = {
+    "reposo": 0, "brotacion": 5, "floracion": 15, "cuajado": 30,
+    "engorde": 55, "maduracion": 85, "cosecha": 100, "postcosecha": 0,
+}
+
+# Persistencia y "online"
+STORE_VERSION = 1
+NODE_ONLINE_MAX_AGE_S = 6 * 3600  # nodo online si reportó en las últimas 6 h

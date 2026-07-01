@@ -7,7 +7,12 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import PlantaBotCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.DATE,
+]
 
 type PlantaBotConfigEntry = ConfigEntry[PlantaBotCoordinator]
 

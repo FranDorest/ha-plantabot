@@ -29,7 +29,9 @@ no copiar YAML.
 - **Sin polling ni API propia.** PlantaBot deriva de otras entidades de HA y se
   recalcula cuando cambian (la ETo de SiAR o la telemetría del nodo).
 - **Nodo por *device*.** Se elige el device del nodo LoRaWAN y la integración resuelve
-  por dentro sus entidades (litros, Watermark, DS18B20) por patrón de nombre/unidad.
+  por dentro sus entidades **por nombre** (las de TTN llegan como texto sin unidad):
+  `wm1_kpa/wm2_kpa/wm3_kpa` → Watermark, `ds1_temp_c/ds2_temp_c/ds3_temp_c` → suelo
+  (se descartan `bmp_temp_c`, `cpu_temp_c` y `bmp_pres_hpa`), `litros` → caudalímetro.
 - **Sensores múltiples y tolerancia a ausencia.** Admite **hasta 3 Watermark** y
   **hasta 3 DS18B20**. Si falta alguno, no falla:
   - Sin Watermark → recomienda por ETo y avisa (`regar_sin_dato_suelo`).

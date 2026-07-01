@@ -20,7 +20,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_AREA,
@@ -50,13 +52,23 @@ from .const import (
     FLOW_TOTAL_MATCH,
     MAX_SOIL_TEMP,
     MAX_WATERMARK,
+    NODE_FIELD_KEYS,
+    DS_FIELDS,
+    WM_FIELDS,
     REC_IRRIGATE,
     REC_IRRIGATE_NO_SOIL,
     REC_NO_IRRIGATE,
     SOIL_TEMP_REGEX,
     WATERMARK_MATCH,
+    META_DEFAULTS,
+    META_PH,
+    META_CE,
+    META_FENOLOGIA,
+    NODE_ONLINE_MAX_AGE_S,
+    STORE_VERSION,
 )
 from .crops import get_kc
+from .health import harvest_progress, tree_health
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +104,7 @@ class ResolvedEntities:
     flow_daily: str | None = None
     watermarks: list[str] = field(default_factory=list)
     soil_temps: list[str] = field(default_factory=list)
+    node_map: dict[str, str] = field(default_factory=dict)  # campo canónico -> entity_id
 
     def all_tracked(self, extra: list[str | None]) -> list[str]:
         """Lista de entity_ids a vigilar (sin None ni duplicados)."""
@@ -100,6 +113,7 @@ class ResolvedEntities:
             self.flow_daily,
             *self.watermarks,
             *self.soil_temps,
+            *self.node_map.values(),
             *extra,
         ]
         seen: list[str] = []
@@ -128,6 +142,13 @@ class PlantaBotData:
     fertilizer_rec: str = FERT_NO_DATA
     balance_l: float | None = None
     litros_medidos_dia: float | None = None
+    # Telemetría del nodo reflejada (campo canónico -> valor) + última lectura
+    node_values: dict[str, float | None] = field(default_factory=dict)
+    last_read: datetime | None = None
+    # Índices calculados
+    health_pct: float | None = None
+    health_detail: dict[str, float] = field(default_factory=dict)
+    harvest_pct: float | None = None
 
 
 def _to_float(state: State | None) -> float | None:
@@ -136,6 +157,16 @@ def _to_float(state: State | None) -> float | None:
         return None
     try:
         return float(state.state)
+    except (ValueError, TypeError):
+        return None
+
+
+def _meta_float(value: object) -> float | None:
+    """Convierte un metadato a float o None."""
+    if value is None:
+        return None
+    try:
+        return float(value)  # type: ignore[arg-type]
     except (ValueError, TypeError):
         return None
 
@@ -152,6 +183,8 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
         )
         self.entry = entry
         self.resolved = ResolvedEntities()
+        self._store: Store = Store(hass, STORE_VERSION, f"{DOMAIN}.{entry.entry_id}")
+        self.metadata: dict[str, object] = dict(META_DEFAULTS)
 
     # ---- ajustes efectivos (data + options) --------------------------------
     def _opt(self, key: str, default):
@@ -184,31 +217,36 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
         ent_reg = er.async_get(self.hass)
         entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=False)
 
-        auto_wm: list[str] = []
-        auto_st: list[str] = []
+        # Mapa completo campo canónico -> entity_id (por substring del object_id)
+        node_map: dict[str, str] = {}
         for ent in entries:
-            eid = ent.entity_id
-            object_id = eid.split(".", 1)[-1]
-            name = ent.original_name or ent.name or ""
-            cat = _classify(object_id, name)
-            if cat == "watermark" and not wm_override:
-                auto_wm.append(eid)
-            elif cat == "soil_temp" and not st_override:
-                auto_st.append(eid)
-            elif cat == "flow_total" and res.flow_total is None:
-                res.flow_total = eid
+            object_id = ent.entity_id.split(".", 1)[-1].lower()
+            for field_key in NODE_FIELD_KEYS:
+                if field_key in object_id and field_key not in node_map:
+                    node_map[field_key] = ent.entity_id
+                    break
+        res.node_map = node_map
 
-        # Orden estable (wm1<wm2<wm3, ds1<ds2<ds3) y recorte al máximo permitido
+        # Listas derivadas (respetando overrides manuales)
         if not wm_override:
-            res.watermarks = sorted(auto_wm)[:MAX_WATERMARK]
+            res.watermarks = [node_map[f] for f in WM_FIELDS if f in node_map][:MAX_WATERMARK]
         if not st_override:
-            res.soil_temps = sorted(auto_st)[:MAX_SOIL_TEMP]
+            res.soil_temps = [node_map[f] for f in DS_FIELDS if f in node_map][:MAX_SOIL_TEMP]
+        if res.flow_total is None:
+            res.flow_total = node_map.get("litros")
 
         return res
 
     # ---- ciclo de vida ------------------------------------------------------
     async def async_setup(self) -> None:
-        """Resuelve entidades y engancha el seguimiento de cambios de estado."""
+        """Resuelve entidades, carga metadatos y engancha el seguimiento de estados."""
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            # solo claves conocidas, respetando defaults para las que falten
+            for k in META_DEFAULTS:
+                if k in stored:
+                    self.metadata[k] = stored[k]
+
         self.resolved = self._resolve_node_entities()
         extra = [
             self.entry.data.get(CONF_ETO_ENTITY),
@@ -230,6 +268,12 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
     @callback
     def _handle_source_change(self, event: Event) -> None:
         """Recalcula cuando cambia una fuente."""
+        self.async_set_updated_data(self._compute())
+
+    async def async_set_metadata(self, key: str, value: object) -> None:
+        """Actualiza un metadato editable, lo persiste y recalcula."""
+        self.metadata[key] = value
+        await self._store.async_save(self.metadata)
         self.async_set_updated_data(self._compute())
 
     # ---- cálculo ------------------------------------------------------------
@@ -307,5 +351,30 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             data.litros_medidos_dia = _to_float(self.hass.states.get(self.resolved.flow_daily))
             if data.litros_medidos_dia is not None and data.litros_objetivo is not None:
                 data.balance_l = round(data.litros_medidos_dia - data.litros_objetivo, 1)
+
+        # Reflejo de la telemetría del nodo (tipada) + timestamp de última lectura
+        last: datetime | None = None
+        for field_key, eid in self.resolved.node_map.items():
+            st = self.hass.states.get(eid)
+            data.node_values[field_key] = _to_float(st)
+            if st is not None and st.last_updated is not None:
+                last = st.last_updated if last is None else max(last, st.last_updated)
+        data.last_read = last
+
+        # Índices calculados: salud del árbol y progreso de cosecha
+        age_s = None
+        if last is not None:
+            age_s = (dt_util.utcnow() - last).total_seconds()
+        data.health_pct, data.health_detail = tree_health(
+            wm_kpa=data.watermark_kpa,
+            soil_t=data.soil_temp_c,
+            battery_pct=data.node_values.get("bateria_pct"),
+            node_age_s=age_s,
+            ph=_meta_float(self.metadata.get(META_PH)),
+            ce=_meta_float(self.metadata.get(META_CE)),
+            dry_threshold=dry_th,
+            max_age_s=NODE_ONLINE_MAX_AGE_S,
+        )
+        data.harvest_pct = harvest_progress(self.metadata.get(META_FENOLOGIA))
 
         return data
