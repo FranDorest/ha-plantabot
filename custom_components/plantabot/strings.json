@@ -1,0 +1,89 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "PlantaBot — nuevo árbol",
+        "description": "Define el punto de riego y sus fuentes de datos.",
+        "data": {
+          "name": "Nombre del árbol / punto",
+          "node_device_id": "Nodo LoRaWAN (device)",
+          "eto_entity": "ETo (EtPMon de SiAR)",
+          "rain_entity": "Precipitación efectiva (PePMon de SiAR)",
+          "crop": "Tipo de cultivo"
+        }
+      },
+      "params": {
+        "title": "Parámetros de riego y abonado",
+        "data": {
+          "kc_override": "Kc fijo (vacío = usar curva del cultivo)",
+          "area_m2": "Área asignada (m²)",
+          "efficiency_pct": "Eficiencia de riego (%)",
+          "dry_threshold_kpa": "Umbral de suelo seco (kPa)",
+          "fert_min_temp_c": "Temp. mínima de suelo para abonar (°C)",
+          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ajustes de PlantaBot",
+        "data": {
+          "kc_override": "Kc fijo (vacío = usar curva del cultivo)",
+          "area_m2": "Área asignada (m²)",
+          "efficiency_pct": "Eficiencia de riego (%)",
+          "dry_threshold_kpa": "Umbral de suelo seco (kPa)",
+          "fert_min_temp_c": "Temp. mínima de suelo para abonar (°C)",
+          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)"
+        }
+      },
+      "advanced": {
+        "title": "Entidades del nodo (opcional)",
+        "description": "Déjalo vacío para auto-detectar. Rellénalo solo si la detección automática no acierta. Se admiten hasta 3 Watermark y hasta 3 DS18B20.",
+        "data": {
+          "watermark_entities": "Watermark (kPa) — hasta 3",
+          "soil_temp_entities": "DS18B20 temp. suelo (°C) — hasta 3",
+          "flow_total_entity": "Litros acumulados (caudalímetro)",
+          "flow_daily_entity": "Litros del día (utility_meter)"
+        }
+      }
+    }
+  },
+  "selector": {
+    "crop": {
+      "options": {
+        "cerezo": "Cerezo",
+        "nispero": "Níspero",
+        "custom": "Otro / personalizado"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "kc": { "name": "Kc actual" },
+      "etc": { "name": "ETc" },
+      "litros_objetivo": { "name": "Litros a regar hoy" },
+      "recomendacion_riego": {
+        "name": "Recomendación de riego",
+        "state": {
+          "regar": "Regar",
+          "no_regar": "No regar",
+          "regar_sin_dato_suelo": "Regar (sin dato de suelo)"
+        }
+      },
+      "tension_suelo": { "name": "Tensión de suelo" },
+      "temp_suelo": { "name": "Temperatura de suelo" },
+      "recomendacion_abono": {
+        "name": "Recomendación de abonado",
+        "state": {
+          "buen_momento": "Buen momento",
+          "demasiado_frio": "Demasiado frío",
+          "demasiado_calor": "Demasiado calor",
+          "sin_dato": "Sin dato"
+        }
+      },
+      "balance_hidrico": { "name": "Balance hídrico" }
+    }
+  }
+}

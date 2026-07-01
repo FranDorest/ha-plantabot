@@ -1,0 +1,6 @@
+{
+  "name": "PlantaBot (riego de precisión)",
+  "homeassistant": "2024.12.0",
+  "render_readme": true,
+  "country": ["ES"]
+}
