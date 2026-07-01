@@ -37,8 +37,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import PlantaBotConfigEntry
 from .const import (
+    CICLO_STAGES,
     CONF_NAME,
     DOMAIN,
+    FENO_STAGES,
     FERT_STATES,
     IRRIGATION_STATES,
 )
@@ -93,6 +95,16 @@ COMPUTED_ALWAYS: tuple[PlantaBotSensorDescription, ...] = (
         key="cosecha", translation_key="cosecha", native_unit_of_measurement="%",
         state_class=SensorStateClass.MEASUREMENT, icon="mdi:fruit-cherries",
         value_fn=lambda d: d.harvest_pct,
+    ),
+    PlantaBotSensorDescription(
+        key="ciclo_calc", translation_key="ciclo_calc",
+        device_class=SensorDeviceClass.ENUM, options=CICLO_STAGES,
+        icon="mdi:tree-outline", value_fn=lambda d: d.ciclo_efectivo,
+    ),
+    PlantaBotSensorDescription(
+        key="feno_calc", translation_key="feno_calc",
+        device_class=SensorDeviceClass.ENUM, options=FENO_STAGES,
+        icon="mdi:leaf", value_fn=lambda d: d.fenologia_efectiva,
     ),
 )
 

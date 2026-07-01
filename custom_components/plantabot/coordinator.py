@@ -63,12 +63,16 @@ from .const import (
     META_DEFAULTS,
     META_PH,
     META_CE,
+    META_ANIO,
+    META_CICLO,
     META_FENOLOGIA,
+    AUTO,
     NODE_ONLINE_MAX_AGE_S,
     STORE_VERSION,
 )
 from .crops import get_kc
 from .health import harvest_progress, tree_health
+from .phenology import lifecycle_from_age, phenology_from_month
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,6 +153,9 @@ class PlantaBotData:
     health_pct: float | None = None
     health_detail: dict[str, float] = field(default_factory=dict)
     harvest_pct: float | None = None
+    # Etapas efectivas (auto-calculadas o forzadas por el usuario)
+    ciclo_efectivo: str | None = None
+    fenologia_efectiva: str | None = None
 
 
 def _to_float(state: State | None) -> float | None:
@@ -375,6 +382,21 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             dry_threshold=dry_th,
             max_age_s=NODE_ONLINE_MAX_AGE_S,
         )
-        data.harvest_pct = harvest_progress(self.metadata.get(META_FENOLOGIA))
+        # Etapas efectivas: "auto" -> calcular; si el usuario fijó una, esa manda.
+        ciclo_meta = self.metadata.get(META_CICLO)
+        if ciclo_meta == AUTO:
+            anio = _meta_float(self.metadata.get(META_ANIO))
+            age = (datetime.now().year - int(anio)) if anio else None
+            data.ciclo_efectivo = lifecycle_from_age(crop, age)
+        else:
+            data.ciclo_efectivo = ciclo_meta  # type: ignore[assignment]
+
+        feno_meta = self.metadata.get(META_FENOLOGIA)
+        if feno_meta == AUTO:
+            data.fenologia_efectiva = phenology_from_month(crop, datetime.now().month)
+        else:
+            data.fenologia_efectiva = feno_meta  # type: ignore[assignment]
+
+        data.harvest_pct = harvest_progress(data.fenologia_efectiva)
 
         return data

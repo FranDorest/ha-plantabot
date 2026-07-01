@@ -96,12 +96,15 @@ META_CICLO = "ciclo_vida"
 META_FENOLOGIA = "fenologia"
 META_FECHA_CUAJADO = "fecha_cuajado"
 
-# Opciones de los desplegables
-CICLO_OPTIONS = ["planton", "formacion", "produccion", "adulto", "senescente"]
-FENO_OPTIONS = [
+# Opciones de los desplegables ("auto" = PlantaBot calcula la etapa)
+AUTO = "auto"
+CICLO_STAGES = ["planton", "formacion", "produccion", "adulto", "senescente"]
+FENO_STAGES = [
     "reposo", "brotacion", "floracion", "cuajado",
     "engorde", "maduracion", "cosecha", "postcosecha",
 ]
+CICLO_OPTIONS = [AUTO, *CICLO_STAGES]
+FENO_OPTIONS = [AUTO, *FENO_STAGES]
 
 # Valores por defecto de los metadatos
 META_DEFAULTS: dict[str, object] = {
@@ -113,8 +116,8 @@ META_DEFAULTS: dict[str, object] = {
     META_N: 0.0,
     META_P: 0.0,
     META_K: 0.0,
-    META_CICLO: "formacion",
-    META_FENOLOGIA: "reposo",
+    META_CICLO: AUTO,
+    META_FENOLOGIA: AUTO,
     META_FECHA_CUAJADO: None,
 }
 
