@@ -61,9 +61,15 @@
   },
   "entity": {
     "sensor": {
-      "kc": { "name": "Kc actual" },
-      "etc": { "name": "ETc" },
-      "litros_objetivo": { "name": "Litros a regar hoy" },
+      "kc": {
+        "name": "Kc actual"
+      },
+      "etc": {
+        "name": "ETc"
+      },
+      "litros_objetivo": {
+        "name": "Litros a regar hoy"
+      },
       "recomendacion_riego": {
         "name": "Recomendación de riego",
         "state": {
@@ -72,8 +78,12 @@
           "regar_sin_dato_suelo": "Regar (sin dato de suelo)"
         }
       },
-      "tension_suelo": { "name": "Tensión de suelo (media)" },
-      "temp_suelo": { "name": "Temperatura de suelo (media)" },
+      "tension_suelo": {
+        "name": "Tensión de suelo (media)"
+      },
+      "temp_suelo": {
+        "name": "Temperatura de suelo (media)"
+      },
       "recomendacion_abono": {
         "name": "Recomendación de abonado",
         "state": {
@@ -83,64 +93,147 @@
           "sin_dato": "Sin dato"
         }
       },
-      "balance_hidrico": { "name": "Balance hídrico" },
-      "wm_1": { "name": "Tensión de suelo 1" },
-      "wm_2": { "name": "Tensión de suelo 2 (superficial)" },
-      "wm_3": { "name": "Tensión de suelo 3 (bajo raíces)" },
-      "ds_1": { "name": "Temperatura de suelo 1" },
-      "ds_2": { "name": "Temperatura de suelo 2" },
-      "ds_3": { "name": "Temperatura de suelo 3" },
-      "amb_temp": { "name": "Temperatura ambiente" },
-      "amb_pres": { "name": "Presión" },
-      "bat_pct": { "name": "Batería" },
-      "bat_v": { "name": "Batería (voltaje)" },
-      "bat_mv": { "name": "Batería (mV)" },
-      "cpu_temp": { "name": "Temperatura CPU" },
-      "uptime": { "name": "Uptime" },
-      "ciclo": { "name": "Tiempo de ciclo" },
-      "lat": { "name": "Latitud" },
-      "lon": { "name": "Longitud" },
-      "ultima_lectura": { "name": "Última lectura" },
-      "salud": { "name": "Salud del árbol" },
-      "cosecha": { "name": "Progreso de cosecha" }
-    }
-  },
-  "number": {
-    "altura_m": { "name": "Altura" },
-    "copa_m": { "name": "Diámetro de copa" },
-    "anio_plantacion": { "name": "Año de plantación" },
-    "ph": { "name": "pH del suelo" },
-    "ce": { "name": "Conductividad (CE)" },
-    "n": { "name": "Nitrógeno (N)" },
-    "p": { "name": "Fósforo (P)" },
-    "k": { "name": "Potasio (K)" }
-  },
-  "select": {
-    "ciclo_vida": {
-      "name": "Ciclo de vida",
-      "state": {
-        "planton": "Plantón",
-        "formacion": "Formación",
-        "produccion": "Producción creciente",
-        "adulto": "Adulto productivo",
-        "senescente": "Senescente"
+      "balance_hidrico": {
+        "name": "Balance hídrico"
+      },
+      "wm_1": {
+        "name": "Tensión de suelo 1"
+      },
+      "wm_2": {
+        "name": "Tensión de suelo 2 (superficial)"
+      },
+      "wm_3": {
+        "name": "Tensión de suelo 3 (bajo raíces)"
+      },
+      "ds_1": {
+        "name": "Temperatura de suelo 1"
+      },
+      "ds_2": {
+        "name": "Temperatura de suelo 2"
+      },
+      "ds_3": {
+        "name": "Temperatura de suelo 3"
+      },
+      "amb_temp": {
+        "name": "Temperatura ambiente"
+      },
+      "amb_pres": {
+        "name": "Presión"
+      },
+      "bat_pct": {
+        "name": "Batería"
+      },
+      "bat_v": {
+        "name": "Batería (voltaje)"
+      },
+      "bat_mv": {
+        "name": "Batería (mV)"
+      },
+      "cpu_temp": {
+        "name": "Temperatura CPU"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "ciclo": {
+        "name": "Tiempo de ciclo"
+      },
+      "lat": {
+        "name": "Latitud"
+      },
+      "lon": {
+        "name": "Longitud"
+      },
+      "ultima_lectura": {
+        "name": "Última lectura"
+      },
+      "salud": {
+        "name": "Salud del árbol"
+      },
+      "cosecha": {
+        "name": "Progreso de cosecha"
+      },
+      "ciclo_calc": {
+        "name": "Ciclo de vida (calculado)",
+        "state": {
+          "planton": "Plantón",
+          "formacion": "Formación",
+          "produccion": "Producción creciente",
+          "adulto": "Adulto productivo",
+          "senescente": "Senescente"
+        }
+      },
+      "feno_calc": {
+        "name": "Estado fenológico (calculado)",
+        "state": {
+          "reposo": "Reposo",
+          "brotacion": "Brotación",
+          "floracion": "Floración",
+          "cuajado": "Cuajado",
+          "engorde": "Engorde (llenado)",
+          "maduracion": "Maduración",
+          "cosecha": "Cosecha",
+          "postcosecha": "Postcosecha"
+        }
       }
     },
-    "fenologia": {
-      "name": "Estado fenológico",
-      "state": {
-        "reposo": "Reposo",
-        "brotacion": "Brotación",
-        "floracion": "Floración",
-        "cuajado": "Cuajado",
-        "engorde": "Engorde (llenado)",
-        "maduracion": "Maduración",
-        "cosecha": "Cosecha",
-        "postcosecha": "Postcosecha"
+    "number": {
+      "altura_m": {
+        "name": "Altura"
+      },
+      "copa_m": {
+        "name": "Diámetro de copa"
+      },
+      "anio_plantacion": {
+        "name": "Año de plantación"
+      },
+      "ph": {
+        "name": "pH del suelo"
+      },
+      "ce": {
+        "name": "Conductividad (CE)"
+      },
+      "n": {
+        "name": "Nitrógeno (N)"
+      },
+      "p": {
+        "name": "Fósforo (P)"
+      },
+      "k": {
+        "name": "Potasio (K)"
+      }
+    },
+    "select": {
+      "ciclo_vida": {
+        "name": "Ciclo de vida",
+        "state": {
+          "auto": "Automático",
+          "planton": "Plantón",
+          "formacion": "Formación",
+          "produccion": "Producción creciente",
+          "adulto": "Adulto productivo",
+          "senescente": "Senescente"
+        }
+      },
+      "fenologia": {
+        "name": "Estado fenológico",
+        "state": {
+          "auto": "Automático",
+          "reposo": "Reposo",
+          "brotacion": "Brotación",
+          "floracion": "Floración",
+          "cuajado": "Cuajado",
+          "engorde": "Engorde (llenado)",
+          "maduracion": "Maduración",
+          "cosecha": "Cosecha",
+          "postcosecha": "Postcosecha"
+        }
+      }
+    },
+    "date": {
+      "fecha_cuajado": {
+        "name": "Fecha de cuajado"
       }
     }
-  },
-  "date": {
-    "fecha_cuajado": { "name": "Fecha de cuajado" }
   }
 }
