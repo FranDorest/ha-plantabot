@@ -9,7 +9,8 @@
           "node_device_id": "Nodo LoRaWAN (device)",
           "eto_entity": "ETo (EtPMon de SiAR)",
           "rain_entity": "Precipitación efectiva (PePMon de SiAR)",
-          "crop": "Tipo de cultivo"
+          "crop": "Tipo de cultivo",
+          "weather_entity": "Previsión meteo (entidad weather, opcional)"
         }
       },
       "params": {
@@ -20,7 +21,11 @@
           "efficiency_pct": "Eficiencia de riego (%)",
           "dry_threshold_kpa": "Umbral de suelo seco (kPa)",
           "fert_min_temp_c": "Temp. mínima de suelo para abonar (°C)",
-          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)"
+          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)",
+          "canopy_auto": "Ajustar riego por tamaño de copa (recomendado)",
+          "min_irrigation_l": "Riego mínimo diario (L, establecimiento)",
+          "max_deficit_l": "Déficit máximo acumulable (L, capacidad del bulbo)",
+          "rain_skip_mm": "Lluvia prevista para posponer riego (mm/48h)"
         }
       }
     }
@@ -35,7 +40,11 @@
           "efficiency_pct": "Eficiencia de riego (%)",
           "dry_threshold_kpa": "Umbral de suelo seco (kPa)",
           "fert_min_temp_c": "Temp. mínima de suelo para abonar (°C)",
-          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)"
+          "fert_max_temp_c": "Temp. máxima de suelo para abonar (°C)",
+          "canopy_auto": "Ajustar riego por tamaño de copa (recomendado)",
+          "min_irrigation_l": "Riego mínimo diario (L, establecimiento)",
+          "max_deficit_l": "Déficit máximo acumulable (L, capacidad del bulbo)",
+          "rain_skip_mm": "Lluvia prevista para posponer riego (mm/48h)"
         }
       },
       "advanced": {
@@ -45,7 +54,8 @@
           "watermark_entities": "Watermark (kPa) — hasta 3",
           "soil_temp_entities": "DS18B20 temp. suelo (°C) — hasta 3",
           "flow_total_entity": "Litros acumulados (caudalímetro)",
-          "flow_daily_entity": "Litros del día (utility_meter)"
+          "flow_daily_entity": "Litros del día (utility_meter)",
+          "weather_entity": "Previsión meteo (entidad weather)"
         }
       }
     }
@@ -68,14 +78,15 @@
         "name": "ETc"
       },
       "litros_objetivo": {
-        "name": "Litros a regar hoy"
+        "name": "Necesidad de hoy"
       },
       "recomendacion_riego": {
         "name": "Recomendación de riego",
         "state": {
           "regar": "Regar",
           "no_regar": "No regar",
-          "regar_sin_dato_suelo": "Regar (sin dato de suelo)"
+          "regar_sin_dato_suelo": "Regar (sin dato de suelo)",
+          "esperar_lluvia": "Esperar lluvia"
         }
       },
       "tension_suelo": {
@@ -176,6 +187,18 @@
           "postcosecha": "Postcosecha",
           "vegetativo": "Crecimiento vegetativo"
         }
+      },
+      "kc_efectivo": {
+        "name": "Kc efectivo"
+      },
+      "cobertura": {
+        "name": "Cobertura de copa"
+      },
+      "deficit_acumulado": {
+        "name": "Déficit acumulado"
+      },
+      "lluvia_prevista": {
+        "name": "Lluvia prevista (48 h)"
       }
     },
     "number": {
@@ -235,6 +258,11 @@
     "date": {
       "fecha_cuajado": {
         "name": "Fecha de cuajado"
+      }
+    },
+    "button": {
+      "riego_registrado": {
+        "name": "Riego registrado"
       }
     }
   }

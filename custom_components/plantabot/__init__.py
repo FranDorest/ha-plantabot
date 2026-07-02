@@ -12,6 +12,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SELECT,
     Platform.DATE,
+    Platform.BUTTON,
 ]
 
 type PlantaBotConfigEntry = ConfigEntry[PlantaBotCoordinator]

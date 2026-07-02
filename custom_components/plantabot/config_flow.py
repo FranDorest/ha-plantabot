@@ -16,6 +16,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_AREA,
+    CONF_CANOPY_AUTO,
     CONF_CROP,
     CONF_DRY_THRESHOLD,
     CONF_EFFICIENCY,
@@ -25,17 +26,25 @@ from .const import (
     CONF_FLOW_DAILY_ENTITY,
     CONF_FLOW_TOTAL_ENTITY,
     CONF_KC_OVERRIDE,
+    CONF_MIN_IRRIGATION,
+    CONF_MAX_DEFICIT,
     CONF_NAME,
     CONF_NODE_DEVICE,
     CONF_RAIN_ENTITY,
+    CONF_WEATHER_ENTITY,
+    CONF_RAIN_SKIP,
     CONF_SOIL_TEMP_ENTITIES,
     CONF_WATERMARK_ENTITIES,
     CROPS,
     DEFAULT_AREA,
+    DEFAULT_CANOPY_AUTO,
     DEFAULT_DRY_THRESHOLD,
     DEFAULT_EFFICIENCY,
     DEFAULT_FERT_MAX,
     DEFAULT_FERT_MIN,
+    DEFAULT_MIN_IRRIGATION,
+    DEFAULT_MAX_DEFICIT,
+    DEFAULT_RAIN_SKIP,
     DOMAIN,
 )
 
@@ -48,6 +57,10 @@ _ETO_SELECTOR = selector.EntitySelector(
 # Selector del nodo por DEVICE (formulario corto): se elige "RAK4631 …" una vez y
 # PlantaBot resuelve por dentro sus entidades (litros, Watermark, DS18B20).
 _NODE_SELECTOR = selector.DeviceSelector(selector.DeviceSelectorConfig())
+
+_WEATHER_SELECTOR = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain="weather")
+)
 
 _CROP_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
@@ -66,6 +79,7 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             vol.Required(CONF_NODE_DEVICE): _NODE_SELECTOR,
             vol.Required(CONF_ETO_ENTITY): _ETO_SELECTOR,
             vol.Optional(CONF_RAIN_ENTITY): _ETO_SELECTOR,
+            vol.Optional(CONF_WEATHER_ENTITY): _WEATHER_SELECTOR,
             vol.Required(CONF_CROP, default=d.get(CONF_CROP, CROPS[0])): _CROP_SELECTOR,
         }
     )
@@ -112,6 +126,22 @@ def _params_schema(cur: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_FERT_MAX, default=cur.get(CONF_FERT_MAX, DEFAULT_FERT_MAX)
             ): _number(-5.0, 50.0, 0.5, "°C"),
+            vol.Required(
+                CONF_CANOPY_AUTO, default=cur.get(CONF_CANOPY_AUTO, DEFAULT_CANOPY_AUTO)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_MIN_IRRIGATION,
+    CONF_MAX_DEFICIT,
+                default=cur.get(CONF_MIN_IRRIGATION, DEFAULT_MIN_IRRIGATION),
+            ): _number(0.0, 500.0, 0.5, "L"),
+            vol.Required(
+                CONF_MAX_DEFICIT,
+                default=cur.get(CONF_MAX_DEFICIT, DEFAULT_MAX_DEFICIT),
+            ): _number(0.0, 2000.0, 5.0, "L"),
+            vol.Required(
+                CONF_RAIN_SKIP,
+                default=cur.get(CONF_RAIN_SKIP, DEFAULT_RAIN_SKIP),
+            ): _number(0.0, 50.0, 0.5, "mm"),
         }
     )
 
@@ -179,22 +209,22 @@ class PlantaBotOptionsFlow(OptionsFlow):
         single_entity = selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor")
         )
+
+        def _opt_key(conf: str, empty_default):
+            """vol.Optional con default SOLO si hay valor previo (default=None
+            con EntitySelector lanza Invalid al validar -> 'Unknown error')."""
+            val = cur.get(conf, empty_default)
+            if val:
+                return vol.Optional(conf, default=val)
+            return vol.Optional(conf)
+
         schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_WATERMARK_ENTITIES,
-                    default=cur.get(CONF_WATERMARK_ENTITIES, []),
-                ): multi_entity,
-                vol.Optional(
-                    CONF_SOIL_TEMP_ENTITIES,
-                    default=cur.get(CONF_SOIL_TEMP_ENTITIES, []),
-                ): multi_entity,
-                vol.Optional(
-                    CONF_FLOW_TOTAL_ENTITY, default=cur.get(CONF_FLOW_TOTAL_ENTITY)
-                ): single_entity,
-                vol.Optional(
-                    CONF_FLOW_DAILY_ENTITY, default=cur.get(CONF_FLOW_DAILY_ENTITY)
-                ): single_entity,
+                _opt_key(CONF_WATERMARK_ENTITIES, []): multi_entity,
+                _opt_key(CONF_SOIL_TEMP_ENTITIES, []): multi_entity,
+                _opt_key(CONF_FLOW_TOTAL_ENTITY, None): single_entity,
+                _opt_key(CONF_FLOW_DAILY_ENTITY, None): single_entity,
+                _opt_key(CONF_WEATHER_ENTITY, None): _WEATHER_SELECTOR,
             }
         )
         return self.async_show_form(step_id="advanced", data_schema=schema)

@@ -67,6 +67,16 @@ COMPUTED_ALWAYS: tuple[PlantaBotSensorDescription, ...] = (
         value_fn=lambda d: d.kc,
     ),
     PlantaBotSensorDescription(
+        key="kc_efectivo", translation_key="kc_efectivo", icon="mdi:sprout-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.kc_efectivo,
+    ),
+    PlantaBotSensorDescription(
+        key="cobertura", translation_key="cobertura", native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT, icon="mdi:tree",
+        value_fn=lambda d: round(d.shading * 100, 1) if d.shading is not None else None,
+    ),
+    PlantaBotSensorDescription(
         key="etc", translation_key="etc", native_unit_of_measurement="mm",
         state_class=SensorStateClass.MEASUREMENT, icon="mdi:water-percent",
         value_fn=lambda d: d.etc,
@@ -75,6 +85,16 @@ COMPUTED_ALWAYS: tuple[PlantaBotSensorDescription, ...] = (
         key="litros_objetivo", translation_key="litros_objetivo",
         native_unit_of_measurement="L", state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:cup-water", value_fn=lambda d: d.litros_objetivo,
+    ),
+    PlantaBotSensorDescription(
+        key="deficit_acumulado", translation_key="deficit_acumulado",
+        native_unit_of_measurement="L", state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:water-minus", value_fn=lambda d: d.deficit_l,
+    ),
+    PlantaBotSensorDescription(
+        key="lluvia_prevista", translation_key="lluvia_prevista",
+        native_unit_of_measurement="mm", state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:weather-rainy", value_fn=lambda d: d.rain_forecast_mm,
     ),
     PlantaBotSensorDescription(
         key="recomendacion_riego", translation_key="recomendacion_riego",
@@ -243,10 +263,24 @@ class PlantaBotSensor(CoordinatorEntity[PlantaBotCoordinator], SensorEntity):
     @property
     def extra_state_attributes(self) -> dict | None:
         d = self.coordinator.data
-        if self.entity_description.key in ("tension_suelo", "recomendacion_riego"):
+        key = self.entity_description.key
+        if key == "tension_suelo":
             return {"num_watermark": d.n_watermark, "valores_kpa": d.watermark_values}
-        if self.entity_description.key in ("temp_suelo", "recomendacion_abono"):
+        if key == "recomendacion_riego":
+            return {
+                "num_watermark": d.n_watermark,
+                "valores_kpa": d.watermark_values,
+                "litros_recomendados": d.deficit_l,
+                "ultimo_riego": d.last_irrigation,
+            }
+        if key in ("temp_suelo", "recomendacion_abono"):
             return {"num_ds18b20": d.n_soil_temp, "valores_c": d.soil_temp_values}
-        if self.entity_description.key == "salud":
+        if key == "salud":
             return {"detalle": d.health_detail} if d.health_detail else None
+        if key == "kc_efectivo":
+            return {"kc_base": d.kc, "kr": d.kr, "sombreo": d.shading}
+        if key == "deficit_acumulado":
+            return {"ultimo_riego": d.last_irrigation}
+        if key == "lluvia_prevista":
+            return {"probabilidad_max": d.rain_forecast_prob}
         return None

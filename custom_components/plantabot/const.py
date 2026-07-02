@@ -9,6 +9,7 @@ CONF_NODE_DEVICE = "node_device_id"      # DeviceSelector -> device_id del nodo 
 CONF_ETO_ENTITY = "eto_entity"           # EntitySelector -> EtPMon (ETo) de SiAR
 CONF_RAIN_ENTITY = "rain_entity"         # EntitySelector -> PePMon (precip. efectiva) de SiAR
 CONF_CROP = "crop"                       # cerezo | nispero | custom
+CONF_WEATHER_ENTITY = "weather_entity"  # EntitySelector weather (opcional)
 
 # Parámetros ajustables (van en options para poder editarlos sin reconfigurar)
 CONF_KC_OVERRIDE = "kc_override"         # None -> usar curva del cultivo
@@ -17,6 +18,10 @@ CONF_EFFICIENCY = "efficiency_pct"
 CONF_DRY_THRESHOLD = "dry_threshold_kpa"
 CONF_FERT_MIN = "fert_min_temp_c"
 CONF_FERT_MAX = "fert_max_temp_c"
+CONF_CANOPY_AUTO = "canopy_auto"         # derivar cobertura de la copa (True) o Kr=1
+CONF_MIN_IRRIGATION = "min_irrigation_l"  # suelo mínimo de riego (establecimiento)
+CONF_MAX_DEFICIT = "max_deficit_l"       # techo del déficit acumulable (bulbo)
+CONF_RAIN_SKIP = "rain_skip_mm"          # mm previstos (48h) para posponer el riego
 
 # Overrides manuales de entidades del nodo (para el flujo avanzado / cuando la
 # auto-resolución no acierta). Todas opcionales.
@@ -35,6 +40,20 @@ DEFAULT_EFFICIENCY = 90.0     # % eficiencia de riego (goteo alto)
 DEFAULT_DRY_THRESHOLD = 40.0  # kPa; por encima => suelo seco => regar
 DEFAULT_FERT_MIN = 10.0       # °C; por debajo => demasiado frío para abonar
 DEFAULT_FERT_MAX = 30.0       # °C; por encima => demasiado calor / estrés radicular
+DEFAULT_CANOPY_AUTO = True    # derivar Kr de la copa/área por defecto
+DEFAULT_MIN_IRRIGATION = 0.0  # L; suelo mínimo (0 = sin mínimo)
+DEFAULT_MAX_DEFICIT = 60.0    # L; techo del acumulador de déficit (0 = sin techo)
+DEFAULT_RAIN_SKIP = 5.0       # mm esperados en 48h que justifican posponer
+RAIN_SAFETY_FACTOR = 1.5      # si wm >= umbral*factor (muy seco) se riega aunque llueva
+FORECAST_DAYS = 2             # horizonte de previsión considerado (días)
+# Factor de cobertura (FAO): Kr = min(1, fracción_sombreo / CANOPY_FULL_SHADING)
+CANOPY_FULL_SHADING = 0.7     # fracción de sombreo que se considera cobertura plena
+
+# Claves internas persistidas en el Store junto a los metadatos (prefijo _ para
+# no colisionar con META_*; el cargador de metadatos las ignora).
+STORE_DEFICIT_L = "_deficit_l"
+STORE_DEFICIT_DATE = "_deficit_date"
+STORE_LAST_IRRIGATION = "_last_irrigation"
 
 # --- Cultivos ---
 CROP_CEREZO = "cerezo"
@@ -46,7 +65,8 @@ CROPS = [CROP_CEREZO, CROP_NISPERO, CROP_CUSTOM]
 REC_IRRIGATE = "regar"
 REC_NO_IRRIGATE = "no_regar"
 REC_IRRIGATE_NO_SOIL = "regar_sin_dato_suelo"
-IRRIGATION_STATES = [REC_IRRIGATE, REC_NO_IRRIGATE, REC_IRRIGATE_NO_SOIL]
+REC_WAIT_RAIN = "esperar_lluvia"
+IRRIGATION_STATES = [REC_IRRIGATE, REC_NO_IRRIGATE, REC_IRRIGATE_NO_SOIL, REC_WAIT_RAIN]
 
 # --- Estados de recomendación de abonado ---
 FERT_GOOD = "buen_momento"
@@ -64,10 +84,6 @@ FERT_STATES = [FERT_GOOD, FERT_COLD, FERT_HOT, FERT_NO_DATA]
 #   Watermark  -> wm1_kpa, wm2_kpa, wm3_kpa
 #   DS18B20    -> ds1_temp_c, ds2_temp_c, ds3_temp_c   (NO bmp_temp_c / cpu_temp_c)
 #   Caudalím.  -> litros (acumulado)   [puede no venir en todos los uplinks]
-WATERMARK_MATCH = "kpa"                 # 'kpa' aparece en wmN_kpa y NO en bmp_pres_hpa
-SOIL_TEMP_REGEX = r"ds\d+.*temp"        # dsN_temp_c; excluye bmp_temp_c / cpu_temp_c
-FLOW_TOTAL_MATCH = ("litros", "liters", "volumen")
-FLOW_RATE_MATCH = ("caudal", "lpm")
 
 # Catálogo de campos del nodo que PlantaBot refleja como entidades tipadas.
 # Se emparejan por substring del object_id (rakXXXX_<campo>). Claves = nombres del payload.

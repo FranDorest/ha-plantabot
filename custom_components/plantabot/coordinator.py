@@ -12,9 +12,8 @@ Diseño clave (según brief):
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
@@ -49,7 +48,6 @@ from .const import (
     FERT_GOOD,
     FERT_HOT,
     FERT_NO_DATA,
-    FLOW_TOTAL_MATCH,
     MAX_SOIL_TEMP,
     MAX_WATERMARK,
     NODE_FIELD_KEYS,
@@ -58,46 +56,44 @@ from .const import (
     REC_IRRIGATE,
     REC_IRRIGATE_NO_SOIL,
     REC_NO_IRRIGATE,
-    SOIL_TEMP_REGEX,
-    WATERMARK_MATCH,
     META_DEFAULTS,
     META_PH,
     META_CE,
     META_ANIO,
     META_CICLO,
     META_FENOLOGIA,
+    META_COPA,
     AUTO,
+    CONF_CANOPY_AUTO,
+    CONF_MIN_IRRIGATION,
+    CONF_MAX_DEFICIT,
+    DEFAULT_CANOPY_AUTO,
+    DEFAULT_MIN_IRRIGATION,
+    DEFAULT_MAX_DEFICIT,
+    CONF_WEATHER_ENTITY,
+    CONF_RAIN_SKIP,
+    DEFAULT_RAIN_SKIP,
+    RAIN_SAFETY_FACTOR,
+    FORECAST_DAYS,
+    REC_WAIT_RAIN,
+    STORE_DEFICIT_L,
+    STORE_DEFICIT_DATE,
+    STORE_LAST_IRRIGATION,
     NODE_ONLINE_MAX_AGE_S,
     STORE_VERSION,
 )
 from .crops import get_kc
 from .health import harvest_progress, tree_health
 from .phenology import lifecycle_from_age, effective_phenology
+from .irrigation import (
+    acumular_deficit,
+    coverage_factor,
+    litros_objetivo as calc_litros,
+    lluvia_esperada,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def _classify(object_id: str, name: str) -> str | None:
-    """Clasifica una entidad del nodo por su NOMBRE (no por unidad).
-
-    Los sensores de TTN llegan como texto sin unidades, así que la única pista
-    fiable es el nombre. Devuelve 'watermark' | 'soil_temp' | 'flow_total' | None.
-
-    Ejemplos con los nombres reales del nodo:
-      wm1_kpa/wm2_kpa/wm3_kpa -> watermark
-      ds1_temp_c/ds2/ds3      -> soil_temp
-      bmp_temp_c / cpu_temp_c -> None (temperatura que NO es de suelo)
-      bmp_pres_hpa            -> None ('hpa' != 'kpa')
-      litros                  -> flow_total
-    """
-    hay = f"{object_id} {name}".lower()
-    if WATERMARK_MATCH in hay:
-        return "watermark"
-    if re.search(SOIL_TEMP_REGEX, hay):
-        return "soil_temp"
-    if any(m in hay for m in FLOW_TOTAL_MATCH):
-        return "flow_total"
-    return None
 
 
 @dataclass
@@ -132,6 +128,9 @@ class PlantaBotData:
     """Resultado del cálculo que consumen los sensores."""
 
     kc: float | None = None
+    kc_efectivo: float | None = None
+    kr: float | None = None
+    shading: float | None = None
     eto: float | None = None
     rain_eff: float | None = None
     etc: float | None = None
@@ -146,6 +145,12 @@ class PlantaBotData:
     fertilizer_rec: str = FERT_NO_DATA
     balance_l: float | None = None
     litros_medidos_dia: float | None = None
+    # Acumulador de déficit (riego por pulsos)
+    deficit_l: float = 0.0
+    last_irrigation: str | None = None  # ISO date/hora del último riego registrado
+    # Previsión meteorológica (si hay entidad weather configurada)
+    rain_forecast_mm: float | None = None   # mm esperados en el horizonte (48h)
+    rain_forecast_prob: float | None = None  # probabilidad máx (%) con precip
     # Telemetría del nodo reflejada (campo canónico -> valor) + última lectura
     node_values: dict[str, float | None] = field(default_factory=dict)
     last_read: datetime | None = None
@@ -186,12 +191,22 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{entry.title}",
-            update_interval=None,  # no polling: refresco por eventos de estado
+            # Refresco principal por eventos de estado; el intervalo actúa de "tick"
+            # de seguridad para lo que depende del TIEMPO y no de eventos: detectar
+            # nodo offline (si no llegan uplinks no hay eventos) y los cambios de
+            # mes/año (Kc, fenología, ciclo de vida).
+            update_interval=timedelta(minutes=15),
         )
         self.entry = entry
         self.resolved = ResolvedEntities()
         self._store: Store = Store(hass, STORE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self.metadata: dict[str, object] = dict(META_DEFAULTS)
+        # Acumulador de déficit (riego por pulsos), persistido en el Store
+        self._deficit_l: float = 0.0
+        self._deficit_date: str | None = None      # última fecha acumulada (ISO)
+        self._last_irrigation: str | None = None   # último riego registrado (ISO)
+        # Cache de previsión meteo (se refresca en el tick vía weather.get_forecasts)
+        self._forecast: list[dict] | None = None
 
     # ---- ajustes efectivos (data + options) --------------------------------
     def _opt(self, key: str, default):
@@ -253,6 +268,10 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             for k in META_DEFAULTS:
                 if k in stored:
                     self.metadata[k] = stored[k]
+            # estado del acumulador (claves internas con prefijo _)
+            self._deficit_l = float(stored.get(STORE_DEFICIT_L, 0.0) or 0.0)
+            self._deficit_date = stored.get(STORE_DEFICIT_DATE)
+            self._last_irrigation = stored.get(STORE_LAST_IRRIGATION)
 
         self.resolved = self._resolve_node_entities()
         extra = [
@@ -280,12 +299,96 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
     async def async_set_metadata(self, key: str, value: object) -> None:
         """Actualiza un metadato editable, lo persiste y recalcula."""
         self.metadata[key] = value
-        await self._store.async_save(self.metadata)
+        await self._save_store()
+        self.async_set_updated_data(self._compute())
+
+    async def _save_store(self) -> None:
+        """Persiste metadatos + estado del acumulador en un único payload."""
+        await self._store.async_save(
+            {
+                **self.metadata,
+                STORE_DEFICIT_L: self._deficit_l,
+                STORE_DEFICIT_DATE: self._deficit_date,
+                STORE_LAST_IRRIGATION: self._last_irrigation,
+            }
+        )
+
+    async def async_register_irrigation(self) -> None:
+        """Botón 'Riego registrado': el usuario ha regado -> déficit a cero.
+
+        Cuando exista caudalímetro/válvula, el rollover diario ya resta los litros
+        medidos automáticamente; este botón es el camino manual mientras tanto.
+        """
+        self._deficit_l = 0.0
+        self._last_irrigation = dt_util.now().isoformat(timespec="minutes")
+        await self._save_store()
         self.async_set_updated_data(self._compute())
 
     # ---- cálculo ------------------------------------------------------------
+    async def _refresh_forecast(self) -> None:
+        """Actualiza la previsión llamando a weather.get_forecasts (daily, con
+        fallback a hourly). Si falla o no hay entidad, deja None y el cálculo
+        degrada a comportamiento sin meteo."""
+        weather_entity = self._opt(CONF_WEATHER_ENTITY, None) or self.entry.data.get(
+            CONF_WEATHER_ENTITY
+        )
+        if not weather_entity:
+            self._forecast = None
+            return
+        for ftype in ("daily", "hourly"):
+            try:
+                resp = await self.hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": weather_entity, "type": ftype},
+                    blocking=True,
+                    return_response=True,
+                )
+                forecast = (resp or {}).get(weather_entity, {}).get("forecast")
+                if forecast:
+                    if ftype == "hourly":
+                        # Agregar 48 horas a 2 "días" equivalentes
+                        forecast = [
+                            {
+                                "precipitation": sum(
+                                    float(h.get("precipitation") or 0)
+                                    for h in forecast[i * 24 : (i + 1) * 24]
+                                ),
+                                "precipitation_probability": max(
+                                    (
+                                        float(h.get("precipitation_probability") or 0)
+                                        for h in forecast[i * 24 : (i + 1) * 24]
+                                    ),
+                                    default=None,
+                                ),
+                            }
+                            for i in range(2)
+                        ]
+                    self._forecast = forecast
+                    return
+            except Exception as err:  # noqa: BLE001 - servicio externo, degradar
+                _LOGGER.debug("Previsión %s no disponible (%s): %s", ftype, weather_entity, err)
+        self._forecast = None
+
     async def _async_update_data(self) -> PlantaBotData:
-        return self._compute()
+        """Tick periódico: refresca previsión, hace el rollover diario y recalcula."""
+        await self._refresh_forecast()
+        data = self._compute()
+        today = dt_util.now().date().isoformat()
+        if self._deficit_date is None:
+            # Primera ejecución: fijar fecha sin acumular (evita saltos retroactivos)
+            self._deficit_date = today
+            await self._save_store()
+        elif self._deficit_date != today:
+            # Nuevo día: déficit += necesidad del día - litros medidos (si hay)
+            cap = float(self._opt(CONF_MAX_DEFICIT, DEFAULT_MAX_DEFICIT))
+            self._deficit_l = acumular_deficit(
+                self._deficit_l, data.litros_objetivo, data.litros_medidos_dia, cap
+            )
+            self._deficit_date = today
+            await self._save_store()
+            data = self._compute()  # recomputar con el déficit ya actualizado
+        return data
 
     def _values_of(self, entity_ids: list[str]) -> list[float]:
         return [
@@ -299,25 +402,43 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
         data.eto = _to_float(self.hass.states.get(self.entry.data.get(CONF_ETO_ENTITY, "")))
         data.rain_eff = _to_float(self.hass.states.get(self.entry.data.get(CONF_RAIN_ENTITY, "")))
 
-        # Kc del mes (o override)
         crop = self.entry.data.get(CONF_CROP)
+        month = dt_util.now().month
+
+        # Etapas efectivas PRIMERO (el Kc por fenología las necesita).
+        ciclo_meta = self.metadata.get(META_CICLO)
+        if ciclo_meta == AUTO:
+            anio = _meta_float(self.metadata.get(META_ANIO))
+            age = (dt_util.now().year - int(anio)) if anio else None
+            data.ciclo_efectivo = lifecycle_from_age(crop, age)
+        else:
+            data.ciclo_efectivo = ciclo_meta  # type: ignore[assignment]
+
+        feno_meta = self.metadata.get(META_FENOLOGIA)
+        if feno_meta == AUTO:
+            data.fenologia_efectiva = effective_phenology(crop, month, data.ciclo_efectivo)
+        else:
+            data.fenologia_efectiva = feno_meta  # type: ignore[assignment]
+
+        # Kc base: override > por etapa fenológica > por mes > neutro
         kc_override = self._opt(CONF_KC_OVERRIDE, None)
-        month = datetime.now().month
-        data.kc = get_kc(crop, month, kc_override)
+        data.kc = get_kc(crop, month, kc_override, stage=data.fenologia_efectiva)
 
-        # ETc = ETo * Kc
-        if data.eto is not None and data.kc is not None:
-            data.etc = round(data.eto * data.kc, 3)
-
-        # Litros objetivo = max(ETc - precip_efectiva, 0) * área / eficiencia
+        # Factor de cobertura (Kr): un árbol joven intercepta menos radiación.
         area = float(self._opt(CONF_AREA, DEFAULT_AREA))
+        canopy_auto = bool(self._opt(CONF_CANOPY_AUTO, DEFAULT_CANOPY_AUTO))
+        copa = _meta_float(self.metadata.get(META_COPA))
+        data.kr, data.shading = coverage_factor(copa, area, canopy_auto)
+        data.kc_efectivo = round(data.kc * data.kr, 3) if data.kc is not None else None
+
+        # ETc = ETo * Kc_efectivo
+        if data.eto is not None and data.kc_efectivo is not None:
+            data.etc = round(data.eto * data.kc_efectivo, 3)
+
+        # Litros objetivo (eficiencia + suelo mínimo de establecimiento)
         eff = float(self._opt(CONF_EFFICIENCY, DEFAULT_EFFICIENCY)) / 100.0
-        if data.etc is not None:
-            rain = data.rain_eff or 0.0
-            deficit_mm = max(data.etc - rain, 0.0)
-            # 1 mm sobre 1 m² = 1 litro
-            if eff > 0:
-                data.litros_objetivo = round(deficit_mm * area / eff, 1)
+        min_irr = float(self._opt(CONF_MIN_IRRIGATION, DEFAULT_MIN_IRRIGATION))
+        data.litros_objetivo = calc_litros(data.etc, data.rain_eff, area, eff, min_irr)
 
         # Suelo: Watermark (kPa) y temperatura (°C). Media para decidir; se guardan
         # además los valores individuales (wm1/2/3, ds1/2/3) como diagnóstico.
@@ -331,13 +452,42 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
         if data.soil_temp_values:
             data.soil_temp_c = round(sum(data.soil_temp_values) / data.n_soil_temp, 1)
 
-        # Recomendación de riego (cruce cálculo x Watermark)
+        # Acumulador de déficit (riego por pulsos): el estado vive en el coordinator
+        # (rollover diario en _async_update_data); aquí solo se refleja y se usa.
+        # El déficit "vivo" incluye lo ya acumulado + la necesidad de hoy.
+        cap = float(self._opt(CONF_MAX_DEFICIT, DEFAULT_MAX_DEFICIT))
+        data.deficit_l = acumular_deficit(
+            self._deficit_l, data.litros_objetivo, data.litros_medidos_dia, cap
+        )
+        data.last_irrigation = self._last_irrigation
+
+        # Previsión de lluvia (si hay weather configurada): mm esperados en 48h
+        data.rain_forecast_mm, data.rain_forecast_prob = lluvia_esperada(
+            self._forecast, FORECAST_DAYS
+        )
+        rain_skip = float(self._opt(CONF_RAIN_SKIP, DEFAULT_RAIN_SKIP))
+        rain_coming = (
+            data.rain_forecast_mm is not None and data.rain_forecast_mm >= rain_skip
+        )
+
+        # Recomendación de riego (déficit x Watermark x previsión)
         dry_th = float(self._opt(CONF_DRY_THRESHOLD, DEFAULT_DRY_THRESHOLD))
+        very_dry_th = dry_th * RAIN_SAFETY_FACTOR
         if data.watermark_kpa is None:
-            # Sin dato de suelo aún: recomendar por ETo y avisar
-            data.irrigation_rec = REC_IRRIGATE_NO_SOIL if (data.litros_objetivo or 0) > 0 else REC_NO_IRRIGATE
-        elif data.watermark_kpa >= dry_th:
-            data.irrigation_rec = REC_IRRIGATE
+            # Sin dato de suelo: recomendar por ETo, posponiendo si viene lluvia
+            if data.deficit_l <= 0:
+                data.irrigation_rec = REC_NO_IRRIGATE
+            elif rain_coming:
+                data.irrigation_rec = REC_WAIT_RAIN
+            else:
+                data.irrigation_rec = REC_IRRIGATE_NO_SOIL
+        elif data.watermark_kpa >= dry_th and data.deficit_l > 0:
+            # Suelo seco y déficit: regar... salvo que venga lluvia y el suelo
+            # no esté aún en zona crítica (muy seco -> regar aunque llueva).
+            if rain_coming and data.watermark_kpa < very_dry_th:
+                data.irrigation_rec = REC_WAIT_RAIN
+            else:
+                data.irrigation_rec = REC_IRRIGATE
         else:
             data.irrigation_rec = REC_NO_IRRIGATE
 
@@ -382,23 +532,8 @@ class PlantaBotCoordinator(DataUpdateCoordinator[PlantaBotData]):
             dry_threshold=dry_th,
             max_age_s=NODE_ONLINE_MAX_AGE_S,
         )
-        # Etapas efectivas: "auto" -> calcular; si el usuario fijó una, esa manda.
-        ciclo_meta = self.metadata.get(META_CICLO)
-        if ciclo_meta == AUTO:
-            anio = _meta_float(self.metadata.get(META_ANIO))
-            age = (datetime.now().year - int(anio)) if anio else None
-            data.ciclo_efectivo = lifecycle_from_age(crop, age)
-        else:
-            data.ciclo_efectivo = ciclo_meta  # type: ignore[assignment]
 
-        feno_meta = self.metadata.get(META_FENOLOGIA)
-        if feno_meta == AUTO:
-            data.fenologia_efectiva = effective_phenology(
-                crop, datetime.now().month, data.ciclo_efectivo
-            )
-        else:
-            data.fenologia_efectiva = feno_meta  # type: ignore[assignment]
-
+        # Progreso de cosecha desde la fenología efectiva (ya calculada arriba)
         data.harvest_pct = harvest_progress(data.fenologia_efectiva)
 
         return data
